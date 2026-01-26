@@ -1,6 +1,8 @@
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcrypt");
 const query = require("../db/query");
+const logAudit = require("../services/audit.service");
+
 
 
 exports.signup = async (req, res) => {
@@ -64,7 +66,6 @@ exports.login = async (req, res) => {
       });
     }
 
-    
     const token = jwt.sign(
       {
         id: user.id,
@@ -74,6 +75,8 @@ exports.login = async (req, res) => {
       process.env.JWT_SECRET,
       { expiresIn: "1d" }
     );
+
+    await logAudit(user.id, "LOGIN_SUCCESS", "user", user.id);
 
     res.json({
       message: "Login successful",

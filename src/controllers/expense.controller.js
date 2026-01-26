@@ -1,4 +1,5 @@
 const query = require("../db/query");
+const logAudit = require("../services/audit.service");
 
 /**
  * ADD EXPENSE
@@ -15,9 +16,13 @@ exports.addExpense = async (req, res) => {
       [userId, category_id, amount]
     );
 
+    const expense = result.rows[0];
+
+    await logAudit(userId, "CREATE_EXPENSE", "expense", expense.id);
+
     res.status(201).json({
       message: "Expense added",
-      expense: result.rows[0],
+      expense,
     });
   } catch (error) {
     console.error(error);
@@ -26,7 +31,7 @@ exports.addExpense = async (req, res) => {
 };
 
 /**
- * GET EXPENSES (with filters + pagination)
+ * GET EXPENSES (filters + pagination)
  */
 exports.getExpenses = async (req, res) => {
   try {
@@ -96,7 +101,9 @@ exports.updateExpense = async (req, res) => {
     const result = await query(
       `UPDATE expenses
        SET amount = $1, category_id = $2
-       WHERE id = $3 AND user_id = $4 AND status = 'PENDING'
+       WHERE id = $3
+         AND user_id = $4
+         AND status = 'PENDING'
        RETURNING *`,
       [amount, category_id, expenseId, userId]
     );
@@ -107,9 +114,13 @@ exports.updateExpense = async (req, res) => {
       });
     }
 
+    const expense = result.rows[0];
+
+    await logAudit(userId, "UPDATE_EXPENSE", "expense", expense.id);
+
     res.json({
       message: "Expense updated",
-      expense: result.rows[0],
+      expense,
     });
   } catch (error) {
     console.error(error);
@@ -127,7 +138,9 @@ exports.deleteExpense = async (req, res) => {
 
     const result = await query(
       `DELETE FROM expenses
-       WHERE id = $1 AND user_id = $2 AND status = 'PENDING'
+       WHERE id = $1
+         AND user_id = $2
+         AND status = 'PENDING'
        RETURNING *`,
       [expenseId, userId]
     );
@@ -138,9 +151,13 @@ exports.deleteExpense = async (req, res) => {
       });
     }
 
+    const expense = result.rows[0];
+
+    await logAudit(userId, "DELETE_EXPENSE", "expense", expense.id);
+
     res.json({
       message: "Expense deleted",
-      expense: result.rows[0],
+      expense,
     });
   } catch (error) {
     console.error(error);

@@ -25,12 +25,14 @@ const authRoutes= require("./src/routes/auth.routes")
 const protectedRoutes = require("./src/routes/protected.routes")
 const expenseRoutes = require("./src/routes/expense.routes")
 const analyticsRoutes= require("./src/routes/analytics.routes")
+const approvalRoutes = require("./src/routes/approval.routes")
 
 app.use(healthRoutes)
 app.use(authRoutes)
 app.use(protectedRoutes)
 app.use(expenseRoutes)
 app.use(analyticsRoutes)
+app.use(approvalRoutes)
 
 const PORT= process.env.PORT
 app.listen(PORT,()=>{
