@@ -7,18 +7,8 @@ const {
   rejectExpense,
 } = require("../controllers/approval.controller");
 
-router.patch(
-  "/expenses/:id/approve",
-  auth,
-  authorizeRoles("MANAGER"),
-  approveExpense
-);
+router.patch("/:id/approve", auth, authorizeRoles("MANAGER"), approveExpense);
+router.patch("/:id/reject", auth, authorizeRoles("MANAGER"), rejectExpense);
 
-router.patch(
-  "/expenses/:id/reject",
-  auth,
-  authorizeRoles("MANAGER"),
-  rejectExpense
-);
 
 module.exports = router;

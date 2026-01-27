@@ -36,43 +36,74 @@ exports.addExpense = async (req, res) => {
 exports.getExpenses = async (req, res) => {
   try {
     const userId = req.user.id;
+    const role = req.user.role;
 
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const offset = (page - 1) * limit;
 
     let sql = `
-      SELECT e.*, c.name AS category
+      SELECT 
+        e.*,
+        c.name AS category,
+        u.email AS employee_email
       FROM expenses e
       JOIN expense_categories c ON e.category_id = c.id
-      WHERE e.user_id = $1
+      JOIN users u ON e.user_id = u.id
     `;
-    const values = [userId];
 
-    // filter by category
+    const values = [];
+    let whereAdded = false;
+
+    /**
+     * ROLE-BASED VISIBILITY
+     */
+    if (role === "EMPLOYEE") {
+      sql += ` WHERE e.user_id = $1`;
+      values.push(userId);
+      whereAdded = true;
+    }
+
+    if (role === "MANAGER") {
+      sql += ` WHERE e.status = 'PENDING' AND e.user_id != $1`;
+      values.push(userId);
+      whereAdded = true;
+    }
+
+    /**
+     * OPTIONAL FILTERS
+     */
     if (req.query.category_id) {
-      sql += ` AND e.category_id = $${values.length + 1}`;
+      sql += whereAdded ? " AND" : " WHERE";
+      sql += ` e.category_id = $${values.length + 1}`;
       values.push(req.query.category_id);
+      whereAdded = true;
     }
 
-    // filter by status
     if (req.query.status) {
-      sql += ` AND e.status = $${values.length + 1}`;
+      sql += whereAdded ? " AND" : " WHERE";
+      sql += ` e.status = $${values.length + 1}`;
       values.push(req.query.status);
+      whereAdded = true;
     }
 
-    // date filters
     if (req.query.from) {
-      sql += ` AND e.created_at >= $${values.length + 1}`;
+      sql += whereAdded ? " AND" : " WHERE";
+      sql += ` e.created_at >= $${values.length + 1}`;
       values.push(req.query.from);
+      whereAdded = true;
     }
 
     if (req.query.to) {
-      sql += ` AND e.created_at <= $${values.length + 1}`;
+      sql += whereAdded ? " AND" : " WHERE";
+      sql += ` e.created_at <= $${values.length + 1}`;
       values.push(req.query.to);
+      whereAdded = true;
     }
 
-    // pagination
+    /**
+     * PAGINATION
+     */
     sql += ` ORDER BY e.created_at DESC LIMIT $${values.length + 1} OFFSET $${values.length + 2}`;
     values.push(limit, offset);
 
