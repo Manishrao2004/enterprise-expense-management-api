@@ -57,17 +57,31 @@ exports.getExpenses = async (req, res) => {
 
     /**
      * ROLE-BASED VISIBILITY
+     * view param: 'team' | 'personal' (default depends on role)
      */
-    if (role === "EMPLOYEE") {
+    const view = req.query.view || (role === 'MANAGER' ? 'team' : 'personal');
+
+    if (view === "personal") {
+      // Personal mode: See only my own expenses
       sql += ` WHERE e.user_id = $1`;
       values.push(userId);
       whereAdded = true;
-    }
-
-    if (role === "MANAGER") {
-      sql += ` WHERE e.status = 'PENDING' AND e.user_id != $1`;
-      values.push(userId);
+    } 
+    else if (role === "MANAGER") { 
+      // Team mode (Manager): See expenses from EMPLOYEES
+      sql += ` WHERE u.role = 'EMPLOYEE'`;
       whereAdded = true;
+      
+      // Default to PENDING if not specified
+      if (!req.query.status) {
+         sql += ` AND e.status = 'PENDING'`;
+      }
+    } 
+    else {
+        // Fallback
+        sql += ` WHERE e.user_id = $1`;
+        values.push(userId);
+        whereAdded = true;
     }
 
     /**
@@ -102,9 +116,34 @@ exports.getExpenses = async (req, res) => {
     }
 
     /**
-     * PAGINATION
+     * SEARCH (Category Name or Employee Email)
      */
-    sql += ` ORDER BY e.created_at DESC LIMIT $${values.length + 1} OFFSET $${values.length + 2}`;
+    if (req.query.search) {
+        sql += whereAdded ? " AND" : " WHERE";
+        // Search in category name or user email
+        // ILIKE is case-insensitive pattern matching in PostgreSQL
+        sql += ` (c.name ILIKE $${values.length + 1} OR u.email ILIKE $${values.length + 1})`;
+        values.push(`%${req.query.search}%`);
+        whereAdded = true;
+    }
+
+    /**
+     * SORTING
+     * Default: created_at DESC
+     */
+    const sortBy = req.query.sortBy || 'created_at';
+    const sortOrder = (req.query.order || 'DESC').toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
+
+    // Whitelist sortable columns to prevent SQL injection
+    const sortableCols = {
+        'date': 'e.created_at',
+        'amount': 'e.amount',
+        'category': 'c.name',
+        'status': 'e.status'
+    };
+    const orderClause = sortableCols[sortBy] || 'e.created_at';
+
+    sql += ` ORDER BY ${orderClause} ${sortOrder} LIMIT $${values.length + 1} OFFSET $${values.length + 2}`;
     values.push(limit, offset);
 
     const result = await query(sql, values);
@@ -130,34 +169,47 @@ exports.updateExpense = async (req, res) => {
     const { amount, category_id } = req.body;
 
     const result = await query(
-      `UPDATE expenses
-       SET amount = $1, category_id = $2
-       WHERE id = $3
-         AND user_id = $4
-         AND status = 'PENDING'
-       RETURNING *`,
+      `
+      UPDATE expenses
+      SET
+        amount = COALESCE($1, amount),
+        category_id = COALESCE($2, category_id)
+      WHERE id = $3
+        AND user_id = $4
+        AND status = 'PENDING'
+      RETURNING *
+      `,
       [amount, category_id, expenseId, userId]
     );
 
     if (result.rows.length === 0) {
+      // Check why failure occurred (Stale Data Check)
+      const check = await query(
+        "SELECT status FROM expenses WHERE id = $1 AND user_id = $2", 
+        [expenseId, userId]
+      );
+      
+      if (check.rows.length > 0 && check.rows[0].status !== 'PENDING') {
+          return res.status(409).json({ 
+            error: `Expense is already ${check.rows[0].status}. Please reload.` 
+          });
+      }
+
       return res.status(404).json({
-        error: "Expense not found, not authorized, or already approved",
+        error: "Expense not found or cannot be updated",
       });
     }
 
-    const expense = result.rows[0];
-
-    await logAudit(userId, "UPDATE_EXPENSE", "expense", expense.id);
-
     res.json({
       message: "Expense updated",
-      expense,
+      expense: result.rows[0],
     });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: "Failed to update expense" });
   }
 };
+
 
 /**
  * DELETE EXPENSE (only if PENDING)
@@ -177,6 +229,18 @@ exports.deleteExpense = async (req, res) => {
     );
 
     if (result.rows.length === 0) {
+       // Check why failure occurred (Stale Data Check)
+       const check = await query(
+        "SELECT status FROM expenses WHERE id = $1 AND user_id = $2", 
+        [expenseId, userId]
+      );
+      
+      if (check.rows.length > 0 && check.rows[0].status !== 'PENDING') {
+          return res.status(409).json({ 
+            error: `Expense is already ${check.rows[0].status}. Please reload.` 
+          });
+      }
+
       return res.status(404).json({
         error: "Expense not found, not authorized, or already approved",
       });

@@ -15,7 +15,7 @@ if (process.env.NODE_ENV === "production") {
 
 
 app.use(cors({
-    origin: "http://localhost:5173",
+    origin: process.env.FRONTEND_URL || "http://localhost:5173",
 }))
 
 app.use(express.json({limit: "10kb"}))
@@ -32,7 +32,7 @@ app.use(healthRoutes)
 app.use(authRoutes)
 app.use(protectedRoutes)
 app.use(expenseRoutes)
-app.use(analyticsRoutes)
+app.use("/analytics", analyticsRoutes)
 app.use("/expenses", approvalRoutes);
 app.use(categoryRoutes);
 
