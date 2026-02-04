@@ -5,9 +5,13 @@ const cors = require("cors")
 const app = express();
 const rateLimit = require("express-rate-limit")
 
+app.set("trust proxy", 1);
+
 const limiter = rateLimit({
     windowMs: 15*60*1000,
     max:100,
+    standardHeaders: true,
+    legacyHeaders: false,
 })
 if (process.env.NODE_ENV === "production") {
   app.use(limiter);
